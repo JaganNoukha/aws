@@ -1,71 +1,33 @@
-name: Flask CI/CD
+name: Deploy to AWS EC2
 
 on:
   push:
     branches:
-      - main  # Trigger on pushes to the main branch
+      - main  # means: do this when you push to the main branch
 
 jobs:
-  build:
-    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4  # Action to check out your repository code
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.9'  # Specify the Python version you are using. Adjust if needed.
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        # Install Flask and any other dependencies your app needs.
-        pip install Flask
-
-    - name: Lint code (Optional)
-      run: |
-        echo "Linting step completed (placeholder)"
-
-    - name: Run tests (Optional)
-      run: |
-        echo "Testing step completed (placeholder)"
-
   deploy:
     runs-on: ubuntu-latest
-    needs: build  # This job depends on the 'build' job completing successfully
-    environment: production # Optional: Use environments for protection rules and secrets
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4 # Need to checkout code again for the deploy job
+    - name: 🧹 Pull the latest code
+      uses: actions/checkout@v3
 
-    - name: Set up SSH Key for EC2
-      # This step sets up the SSH agent with your private key from GitHub Secrets
-      uses: webfactory/ssh-agent@v0.8.0
+    - name: 🚀 Copy code to EC2 instance
+      uses: appleboy/scp-action@master
       with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-        # Ensure you create a GitHub Secret named SSH_PRIVATE_KEY
-        # and paste your EC2 instance's private key there.
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_KEY }}
+        source: "."
+        target: "/home/ubuntu/app"  # where on your EC2 to copy the files
 
-    - name: Add EC2 Host to known_hosts
-      # This prevents "Host key verification failed" errors
-      run: |
-        mkdir -p ~/.ssh
-        ssh-keyscan ${{ secrets.EC2_HOST_PUBLIC_IP }} >> ~/.ssh/known_hosts
-        # Create a GitHub Secret named EC2_HOST_PUBLIC_IP with your EC2 instance's public IP or DNS.
-
-    - name: Deploy application to EC2
-      # This step uses rsync over SSH to copy files and then runs remote commands.
-      run: |
-        # Replace 'ubuntu' with your EC2 instance's username (e.g., ec2-user, admin, ubuntu, centos).
-        # Replace '/var/www/flask_app' with the deployment path on your EC2 instance.
-        # Use --delete to remove files on the target that are not in the source.
-        rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa" . ubuntu@${{ secrets.EC2_HOST_PUBLIC_IP }}:/var/www/flask_app/
-
-        # SSH into the EC2 instance and restart your Flask application.
-        # Example using systemd:
-        ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.EC2_HOST_PUBLIC_IP }} 'sudo systemctl restart flask_app'
-
-        echo "Deployment to EC2 completed."
+    - name: 🐍 Run app on EC2
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_KEY }}
+        script: |
+          cd /home/ubuntu/app
+          python3 app.py
